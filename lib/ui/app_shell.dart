@@ -616,7 +616,9 @@ class _ResourcesPageState extends State<_ResourcesPage> {
     final open = _openType == type;
     final query = _query.trim().toLowerCase();
     final visible = items.where((item) {
-      if (query.isEmpty) return true;
+      if (query.isEmpty) {
+        return true;
+      }
       return '${item.name} ${item.description}'.toLowerCase().contains(query);
     }).toList(growable: false);
     return Container(
@@ -658,10 +660,14 @@ class _ResourcesPageState extends State<_ResourcesPage> {
   }
 
   ResourceItem? _primaryLink(List<ResourceItem> links) {
-    if (links.isEmpty) return null;
+    if (links.isEmpty) {
+      return null;
+    }
     for (final item in links) {
       final value = '${item.name} ${item.link}'.toLowerCase();
-      if (value.contains('onedrive') || value.contains('1drv.ms') || value.contains('sharepoint')) return item;
+      if (value.contains('onedrive') || value.contains('1drv.ms') || value.contains('sharepoint')) {
+        return item;
+      }
     }
     return links.first;
   }
