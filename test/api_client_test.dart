@@ -54,6 +54,56 @@ void main() {
     api.close();
   });
 
+  test('Apps Script POST redirect is followed with a body-free GET', () async {
+    final methods = <String>[];
+    final api = KidsChurchApi(
+      client: MockClient((request) async {
+        methods.add(request.method);
+        if (methods.length == 1) {
+          return http.Response(
+            '',
+            302,
+            headers: {
+              'location': 'https://script.googleusercontent.com/macros/echo?result=one-time',
+            },
+          );
+        }
+        expect(request.url.host, 'script.googleusercontent.com');
+        expect(request.body, isEmpty);
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'version': 'v1',
+            'requestId': 'redirect-test',
+            'data': {'status': 'ok'},
+          }),
+          200,
+        );
+      }),
+    )..configure('https://script.google.com/macros/s/test/exec');
+
+    await api.health();
+
+    expect(methods, ['POST', 'GET']);
+    api.close();
+  });
+
+  test('token-bearing POST is not followed to an untrusted host', () async {
+    final api = KidsChurchApi(
+      client: MockClient((_) async => http.Response(
+            '',
+            302,
+            headers: {'location': 'https://attacker.example/collect'},
+          )),
+    )..configure('https://script.google.com/macros/s/test/exec');
+
+    await expectLater(
+      api.health(),
+      throwsA(isA<ApiException>().having((error) => error.code, 'code', 'INVALID_REDIRECT')),
+    );
+    api.close();
+  });
+
   test('plain HTTP production URLs are rejected', () {
     final api = KidsChurchApi();
     expect(
@@ -63,4 +113,3 @@ void main() {
     api.close();
   });
 }
-
