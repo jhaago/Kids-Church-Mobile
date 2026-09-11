@@ -122,21 +122,21 @@ class KidsChurchApi {
     final id = requestId ?? _requestId();
     late http.Response response;
     try {
-      response = await _client
-          .post(
-            Uri.parse(_baseUrl),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'version': 'v1',
-              'operation': operation,
-              'requestId': id,
-              if (token.isNotEmpty) 'token': token,
-              'data': data,
-            }),
-          )
-          .timeout(const Duration(seconds: 25));
+      response = await _postFollowingAppsScriptRedirect(
+        Uri.parse(_baseUrl),
+        jsonEncode({
+          'version': 'v1',
+          'operation': operation,
+          'requestId': id,
+          if (token.isNotEmpty) 'token': token,
+          'data': data,
+        }),
+        id,
+      ).timeout(const Duration(seconds: 25));
     } on TimeoutException {
       throw ApiException('NETWORK_TIMEOUT', 'The server took too long to respond.', requestId: id);
+    } on ApiException {
+      rethrow;
     } catch (_) {
       throw ApiException('NETWORK_ERROR', 'Could not reach the Kids Church server.', requestId: id);
     }
@@ -160,6 +160,65 @@ class KidsChurchApi {
       );
     }
     return _map(envelope['data']);
+  }
+
+  Future<http.Response> _postFollowingAppsScriptRedirect(
+    Uri uri,
+    String body,
+    String requestId,
+  ) async {
+    var currentUri = uri;
+    var method = 'POST';
+
+    for (var redirectCount = 0; redirectCount <= 3; redirectCount++) {
+      final request = http.Request(method, currentUri)..followRedirects = false;
+      if (method == 'POST') {
+        request.headers['Content-Type'] = 'application/json';
+        request.body = body;
+      }
+
+      final response = await http.Response.fromStream(await _client.send(request));
+      if (!_isRedirect(response.statusCode)) return response;
+
+      final location = response.headers['location'];
+      if (location == null || location.isEmpty || redirectCount == 3) {
+        throw ApiException(
+          'INVALID_REDIRECT',
+          'The server returned an invalid redirect.',
+          requestId: requestId,
+        );
+      }
+
+      final nextUri = currentUri.resolve(location);
+      if (!_isTrustedGoogleRedirect(nextUri)) {
+        throw ApiException(
+          'INVALID_REDIRECT',
+          'The server redirected to an unexpected address.',
+          requestId: requestId,
+        );
+      }
+
+      // Apps Script ContentService executes the POST first, then serves its
+      // result from a one-time googleusercontent URL using GET. Never resend
+      // the token-bearing POST body to the redirected host.
+      currentUri = nextUri;
+      method = 'GET';
+    }
+
+    throw ApiException(
+      'INVALID_REDIRECT',
+      'The server returned too many redirects.',
+      requestId: requestId,
+    );
+  }
+
+  bool _isRedirect(int statusCode) =>
+      statusCode == 301 || statusCode == 302 || statusCode == 303 || statusCode == 307 || statusCode == 308;
+
+  bool _isTrustedGoogleRedirect(Uri uri) {
+    final host = uri.host.toLowerCase();
+    return uri.scheme == 'https' &&
+        (host == 'script.googleusercontent.com' || host.endsWith('.googleusercontent.com'));
   }
 
   String _requestId() {
