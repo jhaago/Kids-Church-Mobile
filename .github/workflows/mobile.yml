@@ -19,7 +19,7 @@ jobs:
           cache: true
       - name: Generate platform runners
         run: flutter create --platforms=android,ios --org au.org.pottershousebeechboro .
-      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart format lib test
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --debug
@@ -42,4 +42,3 @@ jobs:
         run: flutter create --platforms=android,ios --org au.org.pottershousebeechboro .
       - run: flutter pub get
       - run: flutter build ios --debug --no-codesign
-
