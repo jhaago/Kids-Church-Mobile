@@ -5,6 +5,10 @@ import 'package:kids_church_mobile/api/kids_church_api.dart';
 import 'package:kids_church_mobile/models/models.dart';
 import 'package:kids_church_mobile/storage/mobile_storage.dart';
 
+enum AppTab { attendance, roster, schedule, kids, resources }
+
+enum ChildSort { firstName, surname }
+
 class AppController extends ChangeNotifier {
   AppController({required KidsChurchApi api, required MobileStorage storage})
       : _api = api,
@@ -28,17 +32,31 @@ class AppController extends ChangeNotifier {
   List<PendingAttendanceWrite> pendingWrites = const [];
   String searchQuery = '';
   String errorMessage = '';
+  AppTab selectedTab = AppTab.attendance;
+  ChildSort childSort = ChildSort.firstName;
+  RosterBundle? roster;
+  List<ScheduleRole> scheduleRoles = const [];
+  ResourcesBundle? resources;
+  VolunteerProfile? profile;
 
   bool get isConfigured => apiUrl.isNotEmpty;
   bool get isAuthenticated => volunteer != null && token.isNotEmpty;
 
   List<ChildSummary> get visibleChildren {
     final query = searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return children;
-    return children.where((child) {
+    final filtered = query.isEmpty ? [...children] : children.where((child) {
       return '${child.fullName} ${child.firstName} ${child.surname}'.toLowerCase().contains(query);
-    }).toList(growable: false);
+    }).toList();
+    filtered.sort((a, b) {
+      final left = childSort == ChildSort.firstName ? a.firstName : a.surname;
+      final right = childSort == ChildSort.firstName ? b.firstName : b.surname;
+      return left.toLowerCase().compareTo(right.toLowerCase());
+    });
+    return filtered;
   }
+
+  List<ChildSummary> get presentChildren =>
+      visibleChildren.where((child) => presentByChildId[child.childId] == true).toList(growable: false);
 
   int get presentCount => presentByChildId.values.where((value) => value).length;
 
@@ -142,6 +160,7 @@ class AppController extends ChangeNotifier {
       selectedSession = session;
       await _storage.saveSelectedSessionId(session.sessionId);
       await _loadAttendance();
+      selectedTab = AppTab.attendance;
       unawaited(flushPending());
     });
   }
@@ -158,6 +177,50 @@ class AppController extends ChangeNotifier {
   void setSearchQuery(String value) {
     searchQuery = value;
     notifyListeners();
+  }
+
+  void setChildSort(ChildSort value) {
+    childSort = value;
+    notifyListeners();
+  }
+
+  Future<void> selectTab(AppTab tab) async {
+    selectedTab = tab;
+    searchQuery = '';
+    notifyListeners();
+    await refreshCurrentTab();
+  }
+
+  Future<void> refreshCurrentTab() async {
+    switch (selectedTab) {
+      case AppTab.attendance:
+      case AppTab.kids:
+        await _runBusy(_loadAttendance);
+        return;
+      case AppTab.roster:
+        await _runBusy(() async => roster = await _api.myRoster(token));
+        return;
+      case AppTab.schedule:
+        await _runBusy(() async => scheduleRoles = await _api.schedule(token, selectedSession!));
+        return;
+      case AppTab.resources:
+        await _runBusy(() async => resources = await _api.resources(token));
+        return;
+    }
+  }
+
+  Future<void> respondToRoster(RosterItem item, String decision, {String notes = ''}) async {
+    final ok = await _runBusy(() => _api.respondToRoster(token, item.rosterId, decision, notes: notes));
+    if (ok) await refreshCurrentTab();
+  }
+
+  Future<VolunteerProfile?> loadProfile() async {
+    VolunteerProfile? result;
+    await _runBusy(() async {
+      result = await _api.profile(token);
+      profile = result;
+    });
+    return result;
   }
 
   Future<void> toggleAttendance(ChildSummary child, bool present) async {
@@ -329,6 +392,11 @@ class AppController extends ChangeNotifier {
     selectedSession = null;
     children = const [];
     presentByChildId = {};
+    selectedTab = AppTab.attendance;
+    roster = null;
+    scheduleRoles = const [];
+    resources = null;
+    profile = null;
     await _storage.saveToken('');
     if (!keepError) errorMessage = '';
   }

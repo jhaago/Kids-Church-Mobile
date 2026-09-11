@@ -2,7 +2,7 @@
 
 Shared Flutter client for Android and iOS. It uses the versioned JSON API in [`jhaago/kids-church-app`](https://github.com/jhaago/kids-church-app) and never accesses Google Sheets directly.
 
-## Current vertical slice
+## Current parity phase
 
 - Runtime-configurable Apps Script `/exec` URL with health check
 - Volunteer login using the existing Kids Church accounts
@@ -14,6 +14,13 @@ Shared Flutter client for Android and iOS. It uses the versioned JSON API in [`j
 - queue isolation by authenticated volunteer, service and date
 - refresh/reconnect reconciliation with server truth
 - visible pending/sync/failure state
+- web-app-matched dark theme, cards, pills and five-tab navigation
+- volunteer roster with confirm/reject actions
+- service schedule and linked resources
+- present-kids view and on-demand family details
+- resource library and volunteer profile
+
+The native UI follows the operational web app's information architecture and visual language. Native controls remain native where that improves touch behaviour, accessibility, or platform reliability.
 
 The existing Apps Script web application remains operational and is the source of all server-side permission, session and Sheet rules.
 
@@ -48,4 +55,3 @@ Use a copied spreadsheet and a test Apps Script deployment first:
 6. Reconnect and verify the queue clears and the Sheet matches the screen.
 7. Close or change the service while a device is stale and verify writes are blocked.
 8. Use two devices on the same service and refresh both to verify reconciliation.
-

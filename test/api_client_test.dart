@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kids_church_mobile/api/kids_church_api.dart';
+import 'package:kids_church_mobile/models/models.dart';
 
 void main() {
   test('health call sends the versioned request envelope', () async {
@@ -110,6 +111,45 @@ void main() {
       () => api.configure('http://example.test/exec'),
       throwsA(isA<ApiException>().having((error) => error.code, 'code', 'INVALID_URL')),
     );
+    api.close();
+  });
+
+  test('volunteer content calls use authenticated mobile operations', () async {
+    final operations = <String>[];
+    final tokens = <String>[];
+    final api = KidsChurchApi(
+      client: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        operations.add(body['operation'] as String);
+        tokens.add(body['token'] as String);
+        final operation = body['operation'];
+        final data = switch (operation) {
+          'roster.mine' => {'roster': <Object>[], 'blockouts': <Object>[]},
+          'schedule.get' => {'roles': <Object>[]},
+          'resources.list' => {'topLinks': <Object>[], 'itemsByType': <String, Object>{}},
+          'profile.get' => {'volunteer': {'volunteerId': 'V-1', 'name': 'Test'}, 'photoUrl': ''},
+          _ => <String, Object>{},
+        };
+        return http.Response(jsonEncode({'ok': true, 'requestId': 'content-test', 'data': data}), 200);
+      }),
+    )..configure('https://example.test/exec');
+
+    const session = ServiceSession(
+      sessionId: 'S-1',
+      date: '2026-09-13',
+      slot: 'AM',
+      track: '',
+      name: '',
+      isActive: true,
+      label: 'Sunday AM',
+    );
+    await api.myRoster('secure-token');
+    await api.schedule('secure-token', session);
+    await api.resources('secure-token');
+    await api.profile('secure-token');
+
+    expect(operations, ['roster.mine', 'schedule.get', 'resources.list', 'profile.get']);
+    expect(tokens, everyElement('secure-token'));
     api.close();
   });
 }

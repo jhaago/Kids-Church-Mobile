@@ -110,6 +110,33 @@ class KidsChurchApi {
     return ChildDetails.fromJson(data);
   }
 
+  Future<RosterBundle> myRoster(String token) async =>
+      RosterBundle.fromJson(await _call('roster.mine', token: token));
+
+  Future<void> respondToRoster(String token, String rosterId, String decision, {String notes = ''}) async {
+    await _call('roster.respond', token: token, data: {
+      'rosterId': rosterId,
+      'decision': decision,
+      'notes': notes,
+    });
+  }
+
+  Future<List<ScheduleRole>> schedule(String token, ServiceSession session) async {
+    final data = await _call('schedule.get', token: token, data: {
+      'date': session.date,
+      'sessionId': session.sessionId,
+    });
+    return (data['roles'] as List<dynamic>? ?? const [])
+        .map((item) => ScheduleRole.fromJson(_map(item)))
+        .toList(growable: false);
+  }
+
+  Future<ResourcesBundle> resources(String token) async =>
+      ResourcesBundle.fromJson(await _call('resources.list', token: token));
+
+  Future<VolunteerProfile> profile(String token) async =>
+      VolunteerProfile.fromJson(await _call('profile.get', token: token));
+
   Future<Map<String, dynamic>> _call(
     String operation, {
     String token = '',

@@ -3,6 +3,7 @@ import 'package:kids_church_mobile/api/kids_church_api.dart';
 import 'package:kids_church_mobile/state/app_controller.dart';
 import 'package:kids_church_mobile/storage/mobile_storage.dart';
 import 'package:kids_church_mobile/ui/app_shell.dart';
+import 'package:kids_church_mobile/ui/kids_church_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,15 +45,10 @@ class _KidsChurchMobileAppState extends State<KidsChurchMobileApp> with WidgetsB
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xff315b7d);
     return MaterialApp(
       title: 'Kids Church',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        useMaterial3: true,
-        inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
-      ),
+      theme: kidsChurchTheme(),
       home: AppShell(controller: widget.controller),
     );
   }
