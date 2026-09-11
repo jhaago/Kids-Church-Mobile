@@ -68,7 +68,9 @@ class AppController extends ChangeNotifier {
       volunteer = await _api.me(token);
       await _loadSessions(restoreSelection: true);
     } on ApiException catch (error) {
-      if (error.isAuthentication) await _clearAuthentication();
+      if (error.isAuthentication) {
+        await _clearAuthentication();
+      }
       errorMessage = error.message;
     } catch (_) {
       errorMessage = 'The app could not restore its previous state.';
@@ -206,7 +208,9 @@ class AppController extends ChangeNotifier {
           notifyListeners();
         } on ApiException catch (error) {
           errorMessage = error.message;
-          if (error.isAuthentication) await _clearAuthentication(keepError: true);
+          if (error.isAuthentication) {
+            await _clearAuthentication(keepError: true);
+          }
           break;
         }
       }
@@ -216,7 +220,9 @@ class AppController extends ChangeNotifier {
       }
     } on ApiException catch (error) {
       errorMessage = error.message;
-      if (error.isAuthentication) await _clearAuthentication(keepError: true);
+      if (error.isAuthentication) {
+        await _clearAuthentication(keepError: true);
+      }
     } catch (_) {
       errorMessage = 'Pending attendance is saved on this device and will retry later.';
     } finally {
@@ -235,7 +241,9 @@ class AppController extends ChangeNotifier {
       await flushPending();
     } on ApiException catch (error) {
       errorMessage = error.message;
-      if (error.isAuthentication) await _clearAuthentication(keepError: true);
+      if (error.isAuthentication) {
+        await _clearAuthentication(keepError: true);
+      }
       notifyListeners();
     }
   }
@@ -246,7 +254,9 @@ class AppController extends ChangeNotifier {
       return await _api.childDetails(token, childId);
     } on ApiException catch (error) {
       errorMessage = error.message;
-      if (error.isAuthentication) await _clearAuthentication(keepError: true);
+      if (error.isAuthentication) {
+        await _clearAuthentication(keepError: true);
+      }
       notifyListeners();
       return null;
     }
@@ -299,7 +309,9 @@ class AppController extends ChangeNotifier {
       return true;
     } on ApiException catch (error) {
       errorMessage = error.message;
-      if (error.isAuthentication) await _clearAuthentication(keepError: true);
+      if (error.isAuthentication) {
+        await _clearAuthentication(keepError: true);
+      }
       return false;
     } catch (_) {
       errorMessage = 'Something went wrong. Please try again.';
