@@ -808,20 +808,38 @@ String _initials(String name) => name.trim().split(RegExp(r'\s+')).where((part) 
 
 String _resourceTypeIcon(String type) {
   final value = type.toLowerCase();
-  if (value.contains('game') || value.contains('activ')) return '🎮';
-  if (value.contains('song')) return '🎵';
-  if (value.contains('bible story review') || value.contains('review')) return '📝';
-  if (value.contains('bible story') || value.contains('story')) return '📖';
-  if (value.contains('time')) return '⏱️';
-  if (value.contains('lesson')) return '🎓';
-  if (value.contains('link')) return '🔗';
+  if (value.contains('game') || value.contains('activ')) {
+    return '🎮';
+  }
+  if (value.contains('song')) {
+    return '🎵';
+  }
+  if (value.contains('bible story review') || value.contains('review')) {
+    return '📝';
+  }
+  if (value.contains('bible story') || value.contains('story')) {
+    return '📖';
+  }
+  if (value.contains('time')) {
+    return '⏱️';
+  }
+  if (value.contains('lesson')) {
+    return '🎓';
+  }
+  if (value.contains('link')) {
+    return '🔗';
+  }
   return '📁';
 }
 
 String _resourceItemIcon(ResourceItem item) {
   final link = item.link.toLowerCase();
-  if (link.contains('youtube.com') || link.contains('youtu.be')) return '▶️';
-  if (link.contains('onedrive') || link.contains('1drv.ms') || link.contains('sharepoint.com')) return '📁';
+  if (link.contains('youtube.com') || link.contains('youtu.be')) {
+    return '▶️';
+  }
+  if (link.contains('onedrive') || link.contains('1drv.ms') || link.contains('sharepoint.com')) {
+    return '📁';
+  }
   return _resourceTypeIcon(item.type);
 }
 
