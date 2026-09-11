@@ -389,7 +389,7 @@ class _ChildrenPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final children = presentOnly ? controller.presentChildren : controller.visibleChildren;
+    final children = presentOnly ? controller.presentChildren : controller.attendanceChildren;
     return RefreshIndicator(
       onRefresh: controller.refreshCurrentTab,
       child: ListView(
@@ -418,6 +418,14 @@ class _ChildrenPage extends StatelessWidget {
             _SortButton(label: 'Surname', selected: controller.childSort == ChildSort.surname, onTap: () => controller.setChildSort(ChildSort.surname)),
           ]),
           ErrorPanel(controller: controller),
+          if (!presentOnly && controller.searchQuery.trim().isEmpty && controller.presentVisitors.isNotEmpty)
+            _Section(
+              title: 'Visitors',
+              children: [
+                for (final child in controller.presentVisitors)
+                  _ChildRow(controller: controller, child: child, canMark: true),
+              ],
+            ),
           Container(
             margin: const EdgeInsets.only(top: 8),
             padding: const EdgeInsets.symmetric(vertical: 5),
@@ -456,7 +464,7 @@ class _ChildRow extends StatelessWidget {
           if (child.hasMedicalInfo) const Padding(padding: EdgeInsets.only(left: 6), child: Text('⚕️')),
           if (child.hasOtherInfo) const Padding(padding: EdgeInsets.only(left: 4), child: Text('❗')),
         ]),
-        subtitle: controller.childHasPending(child.childId) ? const Text('Waiting to sync') : null,
+        subtitle: _childSubtitle(),
         trailing: canMark
             ? OutlinedButton(
                 style: present ? OutlinedButton.styleFrom(backgroundColor: const Color(0x332ECC71), side: const BorderSide(color: Color(0x662ECC71))) : null,
@@ -466,6 +474,15 @@ class _ChildRow extends StatelessWidget {
             : const Icon(Icons.chevron_right),
       ),
     );
+  }
+
+  Widget? _childSubtitle() {
+    final parts = <String>[];
+    if (!controller.isBeechboroChild(child)) {
+      parts.add(child.church.trim().isEmpty ? 'Visitor' : child.church.trim());
+    }
+    if (controller.childHasPending(child.childId)) parts.add('Waiting to sync');
+    return parts.isEmpty ? null : Text(parts.join(' • '));
   }
 }
 
@@ -537,22 +554,133 @@ class _SchedulePage extends StatelessWidget {
       );
 }
 
-class _ResourcesPage extends StatelessWidget {
+class _ResourcesPage extends StatefulWidget {
   const _ResourcesPage({required this.controller});
   final AppController controller;
+
+  @override
+  State<_ResourcesPage> createState() => _ResourcesPageState();
+}
+
+class _ResourcesPageState extends State<_ResourcesPage> {
+  static const _defaultTypes = [
+    'Games / Activities',
+    'Songs',
+    'Bible Stories',
+    'Bible Story Reviews',
+    'Time Fillers',
+    'Lessons',
+  ];
+
+  String _openType = '';
+  String _query = '';
+
   @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final resources = controller.resources;
+    final types = <String>{..._defaultTypes, ...?resources?.types}.toList();
+    final primary = resources == null ? null : _primaryLink(resources.topLinks);
+    final otherLinks = resources?.topLinks.where((item) => item.id != primary?.id).toList() ?? const [];
     return _ContentList(
       controller: controller,
       title: 'Resources',
       empty: resources == null ? 'Loading resources…' : 'No resources available.',
       children: resources == null ? const [] : [
-        if (resources.topLinks.isNotEmpty) _Section(title: 'Links', children: [for (final item in resources.topLinks) _ResourceRow(item: item)]),
-        for (final type in resources.types) _Section(title: type, children: [for (final item in resources.itemsByType[type]!) _ResourceRow(item: item)]),
+        SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              if (primary != null) _ResourceShortcut(item: primary, primary: true),
+              for (final item in otherLinks) ...[
+                const SizedBox(width: 8),
+                _ResourceShortcut(item: item),
+              ],
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => _openUrl(controller.teamsUrl),
+                icon: const Text('👥'),
+                label: const Text('Teams'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        for (final type in types) _category(type, resources.itemsByType[type] ?? const []),
       ],
     );
   }
+
+  Widget _category(String type, List<ResourceItem> items) {
+    final open = _openType == type;
+    final query = _query.trim().toLowerCase();
+    final visible = items.where((item) {
+      if (query.isEmpty) return true;
+      return '${item.name} ${item.description}'.toLowerCase().contains(query);
+    }).toList(growable: false);
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      decoration: _panelDecoration(),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        InkWell(
+          onTap: () => setState(() {
+            _openType = open ? '' : type;
+            _query = '';
+          }),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Text(_resourceTypeIcon(type), style: const TextStyle(fontSize: 17)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(type, style: const TextStyle(fontWeight: FontWeight.w800))),
+              Icon(open ? Icons.arrow_drop_down : Icons.arrow_right, color: KidsChurchColors.muted),
+            ]),
+          ),
+        ),
+        if (open) ...[
+          const Divider(height: 1, color: KidsChurchColors.border),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(hintText: 'Search in $type...', prefixIcon: const Icon(Icons.search), isDense: true),
+            ),
+          ),
+          const Divider(height: 1, color: KidsChurchColors.border),
+          if (visible.isEmpty)
+            const Padding(padding: EdgeInsets.all(18), child: Text('No items yet.', style: TextStyle(color: KidsChurchColors.muted))),
+          for (final item in visible) _ResourceRow(item: item),
+        ],
+      ]),
+    );
+  }
+
+  ResourceItem? _primaryLink(List<ResourceItem> links) {
+    if (links.isEmpty) return null;
+    for (final item in links) {
+      final value = '${item.name} ${item.link}'.toLowerCase();
+      if (value.contains('onedrive') || value.contains('1drv.ms') || value.contains('sharepoint')) return item;
+    }
+    return links.first;
+  }
+}
+
+class _ResourceShortcut extends StatelessWidget {
+  const _ResourceShortcut({required this.item, this.primary = false});
+  final ResourceItem item;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+        style: primary
+            ? OutlinedButton.styleFrom(backgroundColor: const Color(0x332ECC71), side: const BorderSide(color: Color(0x662ECC71)))
+            : null,
+        onPressed: () => _openUrl(item.link),
+        icon: Text(_resourceItemIcon(item)),
+        label: Text(item.name),
+      );
 }
 
 class _ResourceRow extends StatelessWidget {
@@ -560,10 +688,11 @@ class _ResourceRow extends StatelessWidget {
   final ResourceItem item;
   @override
   Widget build(BuildContext context) => ListTile(
-        leading: const Icon(Icons.description_outlined),
+        onTap: () => _showResource(context, item),
+        leading: Text(_resourceItemIcon(item), style: const TextStyle(fontSize: 20)),
         title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: item.description.isEmpty ? null : Text(item.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-        trailing: item.link.isEmpty ? null : IconButton(icon: const Icon(Icons.open_in_new), onPressed: () => _openUrl(item.link)),
+        trailing: const Icon(Icons.chevron_right, color: KidsChurchColors.muted),
       );
 }
 
@@ -670,6 +799,50 @@ void _showChildDetails(BuildContext context, AppController controller, ChildSumm
 }
 
 String _initials(String name) => name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).take(2).map((part) => part[0]).join().toUpperCase();
+
+String _resourceTypeIcon(String type) {
+  final value = type.toLowerCase();
+  if (value.contains('game') || value.contains('activ')) return '🎮';
+  if (value.contains('song')) return '🎵';
+  if (value.contains('bible story review') || value.contains('review')) return '📝';
+  if (value.contains('bible story') || value.contains('story')) return '📖';
+  if (value.contains('time')) return '⏱️';
+  if (value.contains('lesson')) return '🎓';
+  if (value.contains('link')) return '🔗';
+  return '📁';
+}
+
+String _resourceItemIcon(ResourceItem item) {
+  final link = item.link.toLowerCase();
+  if (link.contains('youtube.com') || link.contains('youtu.be')) return '▶️';
+  if (link.contains('onedrive') || link.contains('1drv.ms') || link.contains('sharepoint.com')) return '📁';
+  return _resourceTypeIcon(item.type);
+}
+
+void _showResource(BuildContext context, ResourceItem item) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(item.name, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            Text(item.description.isEmpty ? 'No description' : item.description, style: TextStyle(color: item.description.isEmpty ? KidsChurchColors.muted : KidsChurchColors.text)),
+            if (item.link.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              FilledButton.icon(onPressed: () => _openUrl(item.link), icon: const Icon(Icons.open_in_new), label: const Text('Open link')),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 Future<void> _openUrl(String value) async {
   final uri = Uri.tryParse(value);

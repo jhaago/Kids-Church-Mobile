@@ -48,6 +48,7 @@ class AppController extends ChangeNotifier {
 
   bool get isConfigured => apiUrl.isNotEmpty;
   bool get isAuthenticated => volunteer != null && token.isNotEmpty;
+  String get teamsUrl => apiUrl.isEmpty ? '' : '$apiUrl?page=teams';
 
   List<ChildSummary> get visibleChildren {
     final query = searchQuery.trim().toLowerCase();
@@ -64,6 +65,19 @@ class AppController extends ChangeNotifier {
 
   List<ChildSummary> get presentChildren =>
       visibleChildren.where((child) => presentByChildId[child.childId] == true).toList(growable: false);
+
+  List<ChildSummary> get attendanceChildren {
+    if (searchQuery.trim().isNotEmpty) return visibleChildren;
+    return visibleChildren.where(isBeechboroChild).toList(growable: false);
+  }
+
+  List<ChildSummary> get presentVisitors => visibleChildren
+      .where((child) => !isBeechboroChild(child) && presentByChildId[child.childId] == true)
+      .toList(growable: false);
+
+  bool isBeechboroChild(ChildSummary child) {
+    return isBeechboroChildSummary(child);
+  }
 
   int get presentCount => presentByChildId.values.where((value) => value).length;
 

@@ -56,6 +56,8 @@ class ChildSummary {
     required this.surname,
     required this.fullName,
     required this.age,
+    required this.church,
+    required this.status,
     required this.photoUrl,
     required this.hasMedicalInfo,
     required this.hasOtherInfo,
@@ -66,6 +68,8 @@ class ChildSummary {
   final String surname;
   final String fullName;
   final String age;
+  final String church;
+  final String status;
   final String photoUrl;
   final bool hasMedicalInfo;
   final bool hasOtherInfo;
@@ -76,6 +80,8 @@ class ChildSummary {
         surname: json['surname']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         age: json['age']?.toString() ?? '',
+        church: json['church']?.toString() ?? '',
+        status: json['status']?.toString() ?? '',
         photoUrl: json['photoUrl']?.toString() ?? '',
         hasMedicalInfo: json['hasMedicalInfo'] == true,
         hasOtherInfo: json['hasOtherInfo'] == true,
@@ -357,6 +363,13 @@ class AttendanceQueue {
     String requestId,
   ) =>
       current.where((item) => item.requestId != requestId).toList(growable: false);
+}
+
+bool isBeechboroChildSummary(ChildSummary child) {
+  final church = child.church.trim().toLowerCase();
+  final status = child.status.trim().toLowerCase();
+  return (church.isEmpty || church.contains('beechboro')) &&
+      (status.isEmpty || !status.contains('visitor'));
 }
 
 Map<String, dynamic> _map(Object? value) => Map<String, dynamic>.from(value as Map? ?? const {});
