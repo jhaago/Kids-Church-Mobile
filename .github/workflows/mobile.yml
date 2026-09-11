@@ -18,7 +18,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate platform runners
-        run: flutter create --platforms=android,ios --org au.org.pottershousebeechboro .
+        run: flutter create --empty --platforms=android,ios --org au.org.pottershousebeechboro .
       - run: dart format lib test
       - run: flutter analyze
       - run: flutter test
@@ -39,6 +39,6 @@ jobs:
           channel: stable
           cache: true
       - name: Generate platform runners
-        run: flutter create --platforms=android,ios --org au.org.pottershousebeechboro .
+        run: flutter create --empty --platforms=android,ios --org au.org.pottershousebeechboro .
       - run: flutter pub get
       - run: flutter build ios --debug --no-codesign
