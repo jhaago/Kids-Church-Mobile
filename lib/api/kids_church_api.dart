@@ -116,7 +116,9 @@ class KidsChurchApi {
     String? requestId,
     Map<String, dynamic> data = const {},
   }) async {
-    if (_baseUrl.isEmpty) throw const ApiException('NOT_CONFIGURED', 'The server URL has not been configured.');
+    if (_baseUrl.isEmpty) {
+      throw const ApiException('NOT_CONFIGURED', 'The server URL has not been configured.');
+    }
     final id = requestId ?? _requestId();
     late http.Response response;
     try {
