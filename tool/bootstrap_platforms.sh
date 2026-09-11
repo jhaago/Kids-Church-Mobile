@@ -6,8 +6,7 @@ if ! command -v flutter >/dev/null 2>&1; then
   exit 1
 fi
 
-flutter create --platforms=android,ios --org au.org.pottershousebeechboro .
+flutter create --empty --platforms=android,ios --org au.org.pottershousebeechboro .
 flutter pub get
 flutter analyze
 flutter test
-
