@@ -38,6 +38,13 @@ class AppController extends ChangeNotifier {
   List<ScheduleRole> scheduleRoles = const [];
   ResourcesBundle? resources;
   VolunteerProfile? profile;
+  final Map<AppTab, DateTime> _loadedAt = {};
+  final Set<AppTab> _refreshingTabs = {};
+
+  static const _attendanceFreshFor = Duration(seconds: 20);
+  static const _rosterFreshFor = Duration(minutes: 2);
+  static const _scheduleFreshFor = Duration(minutes: 1);
+  static const _resourcesFreshFor = Duration(minutes: 5);
 
   bool get isConfigured => apiUrl.isNotEmpty;
   bool get isAuthenticated => volunteer != null && token.isNotEmpty;
@@ -159,9 +166,12 @@ class AppController extends ChangeNotifier {
     return _runBusy(() async {
       selectedSession = session;
       await _storage.saveSelectedSessionId(session.sessionId);
+      scheduleRoles = const [];
+      _loadedAt.remove(AppTab.schedule);
       await _loadAttendance();
       selectedTab = AppTab.attendance;
       unawaited(flushPending());
+      unawaited(_prefetchVolunteerContent());
     });
   }
 
@@ -184,11 +194,13 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> selectTab(AppTab tab) async {
+  void selectTab(AppTab tab) {
     selectedTab = tab;
     searchQuery = '';
     notifyListeners();
-    await refreshCurrentTab();
+    if (_isTabStale(tab)) {
+      unawaited(_refreshTabSilently(tab));
+    }
   }
 
   Future<void> refreshCurrentTab() async {
@@ -198,13 +210,13 @@ class AppController extends ChangeNotifier {
         await _runBusy(_loadAttendance);
         return;
       case AppTab.roster:
-        await _runBusy(() async => roster = await _api.myRoster(token));
+        await _runBusy(_loadRoster);
         return;
       case AppTab.schedule:
-        await _runBusy(() async => scheduleRoles = await _api.schedule(token, selectedSession!));
+        await _runBusy(_loadSchedule);
         return;
       case AppTab.resources:
-        await _runBusy(() async => resources = await _api.resources(token));
+        await _runBusy(_loadResources);
         return;
     }
   }
@@ -342,7 +354,10 @@ class AppController extends ChangeNotifier {
       }
     }
     selectedSession = match;
-    if (match != null) await _loadAttendance();
+    if (match != null) {
+      await _loadAttendance();
+      unawaited(_prefetchVolunteerContent());
+    }
   }
 
   Future<void> _loadAttendance() async {
@@ -360,6 +375,80 @@ class AppController extends ChangeNotifier {
         presentByChildId[write.childId] = write.present;
       }
     }
+    final now = DateTime.now();
+    _loadedAt[AppTab.attendance] = now;
+    _loadedAt[AppTab.kids] = now;
+  }
+
+  Future<void> _loadRoster() async {
+    roster = await _api.myRoster(token);
+    _loadedAt[AppTab.roster] = DateTime.now();
+  }
+
+  Future<void> _loadSchedule() async {
+    final session = selectedSession;
+    if (session == null) return;
+    scheduleRoles = await _api.schedule(token, session);
+    _loadedAt[AppTab.schedule] = DateTime.now();
+  }
+
+  Future<void> _loadResources() async {
+    resources = await _api.resources(token);
+    _loadedAt[AppTab.resources] = DateTime.now();
+  }
+
+  bool _isTabStale(AppTab tab) {
+    final loaded = _loadedAt[tab];
+    if (loaded == null) return true;
+    final age = DateTime.now().difference(loaded);
+    return age > switch (tab) {
+      AppTab.attendance || AppTab.kids => _attendanceFreshFor,
+      AppTab.roster => _rosterFreshFor,
+      AppTab.schedule => _scheduleFreshFor,
+      AppTab.resources => _resourcesFreshFor,
+    };
+  }
+
+  Future<void> _refreshTabSilently(AppTab tab) async {
+    if (_refreshingTabs.contains(tab) || !isAuthenticated || selectedSession == null) return;
+    _refreshingTabs.add(tab);
+    try {
+      switch (tab) {
+        case AppTab.attendance:
+        case AppTab.kids:
+          await _loadAttendance();
+          break;
+        case AppTab.roster:
+          await _loadRoster();
+          break;
+        case AppTab.schedule:
+          await _loadSchedule();
+          break;
+        case AppTab.resources:
+          await _loadResources();
+          break;
+      }
+      notifyListeners();
+    } on ApiException catch (error) {
+      if (error.isAuthentication) {
+        errorMessage = error.message;
+        await _clearAuthentication(keepError: true);
+        notifyListeners();
+      }
+      // Keep cached content visible for transient background-refresh failures.
+    } catch (_) {
+      // Keep cached content visible for transient background-refresh failures.
+    } finally {
+      _refreshingTabs.remove(tab);
+    }
+  }
+
+  Future<void> _prefetchVolunteerContent() async {
+    await Future.wait([
+      _refreshTabSilently(AppTab.roster),
+      _refreshTabSilently(AppTab.schedule),
+      _refreshTabSilently(AppTab.resources),
+    ]);
   }
 
   Future<bool> _runBusy(Future<void> Function() action) async {
@@ -397,6 +486,8 @@ class AppController extends ChangeNotifier {
     scheduleRoles = const [];
     resources = null;
     profile = null;
+    _loadedAt.clear();
+    _refreshingTabs.clear();
     await _storage.saveToken('');
     if (!keepError) errorMessage = '';
   }
