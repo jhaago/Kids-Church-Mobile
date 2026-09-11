@@ -307,9 +307,15 @@ class AttendanceScreen extends StatelessWidget {
           PopupMenuButton<String>(
             icon: const Icon(Icons.account_circle_outlined),
             onSelected: (value) {
-              if (value == 'profile') _showProfile(context);
-              if (value == 'logout') controller.logout();
-              if (value == 'server') controller.disconnectServer();
+              if (value == 'profile') {
+                _showProfile(context);
+              }
+              if (value == 'logout') {
+                controller.logout();
+              }
+              if (value == 'server') {
+                controller.disconnectServer();
+              }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'profile', child: Text('My Profile')),
@@ -349,7 +355,9 @@ class AttendanceScreen extends StatelessWidget {
             return const SizedBox(height: 260, child: Center(child: CircularProgressIndicator()));
           }
           final profile = snapshot.data;
-          if (profile == null) return const SizedBox(height: 200, child: Center(child: Text('Could not load profile.')));
+          if (profile == null) {
+            return const SizedBox(height: 200, child: Center(child: Text('Could not load profile.')));
+          }
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -500,7 +508,9 @@ class _RosterPage extends StatelessWidget {
       content: TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(hintText: 'Please add a reason')),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Submit rejection'))],
     ));
-    if (confirmed == true && notes.text.trim().isNotEmpty) await controller.respondToRoster(item, 'reject', notes: notes.text.trim());
+    if (confirmed == true && notes.text.trim().isNotEmpty) {
+      await controller.respondToRoster(item, 'reject', notes: notes.text.trim());
+    }
     notes.dispose();
   }
 }
@@ -635,9 +645,13 @@ void _showChildDetails(BuildContext context, AppController controller, ChildSumm
         child: FutureBuilder<ChildDetails?>(
           future: controller.loadChildDetails(child.childId),
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
+            }
             final details = snapshot.data;
-            if (details == null) return const SizedBox(height: 180, child: Center(child: Text('Could not load child details.')));
+            if (details == null) {
+              return const SizedBox(height: 180, child: Center(child: Text('Could not load child details.')));
+            }
             return SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text(details.fullName, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
               if (details.age.isNotEmpty) Text('Age ${details.age}'),
@@ -659,7 +673,9 @@ String _initials(String name) => name.trim().split(RegExp(r'\s+')).where((part) 
 
 Future<void> _openUrl(String value) async {
   final uri = Uri.tryParse(value);
-  if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 }
 
 class ErrorPanel extends StatelessWidget {
@@ -679,27 +695,6 @@ class ErrorPanel extends StatelessWidget {
           leading: const Icon(Icons.error_outline),
           title: Text(controller.errorMessage),
           trailing: IconButton(onPressed: controller.clearError, icon: const Icon(Icons.close)),
-        ),
-      ),
-    );
-  }
-}
-
-class _CountCard extends StatelessWidget {
-  const _CountCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [Text(label), Text(value, style: Theme.of(context).textTheme.titleLarge)],
         ),
       ),
     );
