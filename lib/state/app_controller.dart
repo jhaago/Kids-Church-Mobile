@@ -410,7 +410,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _refreshTabSilently(AppTab tab) async {
-    if (_refreshingTabs.contains(tab) || !isAuthenticated || selectedSession == null) return;
+    if (_refreshingTabs.contains(tab) || !isAuthenticated || selectedSession == null) {
+      return;
+    }
     _refreshingTabs.add(tab);
     try {
       switch (tab) {
