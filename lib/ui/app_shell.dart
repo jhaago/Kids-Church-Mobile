@@ -207,8 +207,12 @@ class SessionScreen extends StatelessWidget {
           IconButton(onPressed: controller.refreshSessions, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'logout') controller.logout();
-              if (value == 'server') controller.disconnectServer();
+              if (value == 'logout') {
+                controller.logout();
+              }
+              if (value == 'server') {
+                controller.disconnectServer();
+              }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'logout', child: Text('Sign out')),
@@ -503,7 +507,9 @@ class _ContactTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (contact.name.isEmpty && contact.phone.isEmpty) return const SizedBox.shrink();
+    if (contact.name.isEmpty && contact.phone.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.contact_phone_outlined),
