@@ -28,6 +28,7 @@ class AppController extends ChangeNotifier {
   ServiceSession? selectedSession;
   List<ChildSummary> children = const [];
   Map<String, ChildDetails> childDetailsById = {};
+  Map<String, String> childDetailVersions = {};
   DateTime? childDetailsSyncedAt;
   Map<String, bool> presentByChildId = {};
   Map<String, String> nightNoteByChildId = {};
@@ -43,16 +44,19 @@ class AppController extends ChangeNotifier {
   VolunteerProfile? profile;
   final Map<AppTab, DateTime> _loadedAt = {};
   final Set<AppTab> _refreshingTabs = {};
+  Timer? _childSyncPollTimer;
 
   static const _attendanceFreshFor = Duration(seconds: 20);
   static const _rosterFreshFor = Duration(minutes: 2);
   static const _scheduleFreshFor = Duration(minutes: 1);
   static const _resourcesFreshFor = Duration(minutes: 5);
-  static const _childDetailsFreshFor = Duration(hours: 1);
+  static const _childDetailsFreshFor = Duration(minutes: 5);
+  static const _childDetailsPollEvery = Duration(minutes: 5);
 
   bool get isConfigured => apiUrl.isNotEmpty;
   bool get isAuthenticated => volunteer != null && token.isNotEmpty;
   String get teamsUrl => apiUrl.isEmpty ? '' : '$apiUrl?page=teams';
+  String get registerUrl => apiUrl.isEmpty ? '' : '$apiUrl?page=register';
 
   List<ChildSummary> get visibleChildren {
     final query = searchQuery.trim().toLowerCase();
@@ -78,6 +82,19 @@ class AppController extends ChangeNotifier {
   List<ChildSummary> get presentVisitors => visibleChildren
       .where((child) => !isBeechboroChild(child) && presentByChildId[child.childId] == true)
       .toList(growable: false);
+
+  List<ChildSummary> visitorCandidates(String query) {
+    final value = query.trim().toLowerCase();
+    if (value.isEmpty) return const [];
+    final matches = children.where((child) {
+      if (isBeechboroChild(child)) return false;
+      return '${child.fullName} ${child.firstName} ${child.surname} ${child.church}'
+          .toLowerCase()
+          .contains(value);
+    }).toList();
+    matches.sort((a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()));
+    return matches;
+  }
 
   bool isBeechboroChild(ChildSummary child) {
     return isBeechboroChildSummary(child);
@@ -109,19 +126,22 @@ class AppController extends ChangeNotifier {
       token = await _storage.token();
       if (token.isEmpty) {
         childDetailsById = {};
+        childDetailVersions = {};
         childDetailsSyncedAt = null;
         await _storage.clearChildDetails();
         return;
       }
       volunteer = await _api.me(token);
       childDetailsById = await _storage.childDetails();
+      childDetailVersions = await _storage.childDetailVersions();
       childDetailsSyncedAt = await _storage.childDetailsSyncedAt();
       await _loadSessions(restoreSelection: true);
-      if (childDetailsById.isEmpty) {
+      if (childDetailsById.isEmpty || childDetailVersions.isEmpty) {
         await _syncChildDetails(force: true, surfaceError: true);
       } else {
         unawaited(_syncChildDetails());
       }
+      _startChildDetailPolling();
     } on ApiException catch (error) {
       if (error.isAuthentication) {
         await _clearAuthentication();
@@ -154,6 +174,7 @@ class AppController extends ChangeNotifier {
       volunteer = result.volunteer;
       await _storage.saveToken(token);
       childDetailsById = {};
+      childDetailVersions = {};
       childDetailsSyncedAt = null;
       await _storage.clearChildDetails();
       selectedSession = null;
@@ -161,6 +182,7 @@ class AppController extends ChangeNotifier {
       presentByChildId = {};
       await _loadSessions();
       await _syncChildDetails(force: true, surfaceError: true);
+      _startChildDetailPolling();
     });
   }
 
@@ -352,7 +374,7 @@ class AppController extends ChangeNotifier {
     try {
       await _loadSessions(restoreSelection: selectedSession != null);
       await flushPending();
-      unawaited(_syncChildDetails());
+      unawaited(_syncChildDetails(force: true));
     } on ApiException catch (error) {
       errorMessage = error.message;
       if (error.isAuthentication) {
@@ -440,7 +462,7 @@ class AppController extends ChangeNotifier {
 
   bool _isChildDetailsStale() {
     final syncedAt = childDetailsSyncedAt;
-    if (syncedAt == null || childDetailsById.isEmpty) return true;
+    if (syncedAt == null || childDetailsById.isEmpty || childDetailVersions.isEmpty) return true;
     return DateTime.now().toUtc().difference(syncedAt.toUtc()) > _childDetailsFreshFor;
   }
 
@@ -451,14 +473,47 @@ class AppController extends ChangeNotifier {
     syncingChildDetails = true;
     notifyListeners();
     try {
-      final details = await _api.syncChildDetails(token);
-      final now = DateTime.now().toUtc();
-      childDetailsById = {
-        for (final child in details)
-          if (child.childId.isNotEmpty) child.childId: child,
-      };
+      final result = await _api.syncChildDetails(token, childDetailVersions);
+      final now = result.syncedAt?.toUtc() ?? DateTime.now().toUtc();
+
+      if (result.fullSnapshot) {
+        childDetailsById = {
+          for (final child in result.changed)
+            if (child.childId.isNotEmpty) child.childId: child,
+        };
+        childDetailVersions = {...result.changedVersions};
+        await _storage.saveChildDetails(result.changed, now);
+        await _storage.saveChildDetailVersions(childDetailVersions);
+      } else {
+        final updatedDetails = {...childDetailsById};
+        final updatedVersions = {...childDetailVersions};
+
+        for (final childId in result.removed) {
+          updatedDetails.remove(childId);
+          updatedVersions.remove(childId);
+        }
+        for (final child in result.changed) {
+          if (child.childId.isEmpty) continue;
+          updatedDetails[child.childId] = child;
+          final version = result.changedVersions[child.childId] ?? '';
+          if (version.isEmpty) {
+            updatedVersions.remove(child.childId);
+          } else {
+            updatedVersions[child.childId] = version;
+          }
+        }
+
+        childDetailsById = updatedDetails;
+        childDetailVersions = updatedVersions;
+        await _storage.applyChildDetailsDelta(
+          changed: result.changed,
+          removed: result.removed,
+          versions: childDetailVersions,
+          syncedAt: now,
+        );
+      }
+
       childDetailsSyncedAt = now;
-      await _storage.saveChildDetails(details, now);
       return true;
     } on ApiException catch (error) {
       if (error.isAuthentication) {
@@ -481,6 +536,16 @@ class AppController extends ChangeNotifier {
       syncingChildDetails = false;
       notifyListeners();
     }
+  }
+
+  void _startChildDetailPolling() {
+    _childSyncPollTimer?.cancel();
+    if (!isAuthenticated) return;
+    _childSyncPollTimer = Timer.periodic(_childDetailsPollEvery, (_) {
+      if (isAuthenticated) {
+        unawaited(_syncChildDetails(force: true));
+      }
+    });
   }
 
   Future<void> _refreshTabSilently(AppTab tab) async {
@@ -551,12 +616,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _clearAuthentication({bool keepError = false}) async {
+    _childSyncPollTimer?.cancel();
+    _childSyncPollTimer = null;
     token = '';
     volunteer = null;
     sessions = const [];
     selectedSession = null;
     children = const [];
     childDetailsById = {};
+    childDetailVersions = {};
     childDetailsSyncedAt = null;
     presentByChildId = {};
     selectedTab = AppTab.attendance;
@@ -575,6 +643,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _childSyncPollTimer?.cancel();
     _api.close();
     super.dispose();
   }
