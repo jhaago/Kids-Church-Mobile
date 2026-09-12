@@ -13,6 +13,7 @@ class MobileStorage {
   static const _tokenKey = 'kc_auth_token';
   static const _queueKey = 'kc_attendance_queue_v1';
   static const _childDetailsPrefix = 'kc_child_details_v1_';
+  static const _childDetailVersionsKey = 'kc_child_detail_versions_v1';
   static const _childDetailsSyncedAtKey = 'kc_child_details_synced_at_v1';
 
   final FlutterSecureStorage _secure;
@@ -95,6 +96,20 @@ class MobileStorage {
     return details;
   }
 
+  Future<Map<String, String>> childDetailVersions() async {
+    final raw = await _secure.read(key: _childDetailVersionsKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final parsed = jsonDecode(raw);
+      if (parsed is! Map) return {};
+      return Map<String, dynamic>.from(parsed).map(
+        (key, value) => MapEntry(key, value?.toString() ?? ''),
+      )..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<DateTime?> childDetailsSyncedAt() async {
     final preferences = await SharedPreferences.getInstance();
     return DateTime.tryParse(preferences.getString(_childDetailsSyncedAtKey) ?? '');
@@ -119,6 +134,41 @@ class MobileStorage {
       }
     }
 
+    await _saveChildDetailsSyncedAt(syncedAt);
+  }
+
+  Future<void> saveChildDetailVersions(Map<String, String> versions) async {
+    if (versions.isEmpty) {
+      await _secure.delete(key: _childDetailVersionsKey);
+      return;
+    }
+    await _secure.write(key: _childDetailVersionsKey, value: jsonEncode(versions));
+  }
+
+  Future<void> applyChildDetailsDelta({
+    required List<ChildDetails> changed,
+    required List<String> removed,
+    required Map<String, String> versions,
+    required DateTime syncedAt,
+  }) async {
+    for (final child in changed) {
+      if (child.childId.isEmpty) continue;
+      await _secure.write(
+        key: '$_childDetailsPrefix${child.childId}',
+        value: jsonEncode(_childDetailsToJson(child)),
+      );
+    }
+
+    for (final childId in removed) {
+      if (childId.isEmpty) continue;
+      await _secure.delete(key: '$_childDetailsPrefix$childId');
+    }
+
+    await saveChildDetailVersions(versions);
+    await _saveChildDetailsSyncedAt(syncedAt);
+  }
+
+  Future<void> _saveChildDetailsSyncedAt(DateTime syncedAt) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_childDetailsSyncedAtKey, syncedAt.toUtc().toIso8601String());
   }
@@ -130,6 +180,7 @@ class MobileStorage {
         await _secure.delete(key: key);
       }
     }
+    await _secure.delete(key: _childDetailVersionsKey);
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_childDetailsSyncedAtKey);
   }
