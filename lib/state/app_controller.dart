@@ -20,12 +20,15 @@ class AppController extends ChangeNotifier {
   bool initializing = true;
   bool busy = false;
   bool syncing = false;
+  bool syncingChildDetails = false;
   String apiUrl = '';
   String token = '';
   Volunteer? volunteer;
   List<ServiceSession> sessions = const [];
   ServiceSession? selectedSession;
   List<ChildSummary> children = const [];
+  Map<String, ChildDetails> childDetailsById = {};
+  DateTime? childDetailsSyncedAt;
   Map<String, bool> presentByChildId = {};
   Map<String, String> nightNoteByChildId = {};
   Map<String, bool> pendingPickupByChildId = {};
@@ -45,6 +48,7 @@ class AppController extends ChangeNotifier {
   static const _rosterFreshFor = Duration(minutes: 2);
   static const _scheduleFreshFor = Duration(minutes: 1);
   static const _resourcesFreshFor = Duration(minutes: 5);
+  static const _childDetailsFreshFor = Duration(hours: 1);
 
   bool get isConfigured => apiUrl.isNotEmpty;
   bool get isAuthenticated => volunteer != null && token.isNotEmpty;
@@ -97,6 +101,8 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       pendingWrites = await _storage.pendingWrites();
+      childDetailsById = await _storage.childDetails();
+      childDetailsSyncedAt = await _storage.childDetailsSyncedAt();
       final storedUrl = await _storage.apiUrl();
       if (storedUrl.isEmpty) return;
       _api.configure(storedUrl);
@@ -106,6 +112,11 @@ class AppController extends ChangeNotifier {
       if (token.isEmpty) return;
       volunteer = await _api.me(token);
       await _loadSessions(restoreSelection: true);
+      if (childDetailsById.isEmpty) {
+        await _syncChildDetails(force: true, surfaceError: true);
+      } else {
+        unawaited(_syncChildDetails());
+      }
     } on ApiException catch (error) {
       if (error.isAuthentication) {
         await _clearAuthentication();
@@ -141,6 +152,7 @@ class AppController extends ChangeNotifier {
       children = const [];
       presentByChildId = {};
       await _loadSessions();
+      await _syncChildDetails(force: true, surfaceError: true);
     });
   }
 
@@ -186,6 +198,7 @@ class AppController extends ChangeNotifier {
       selectedTab = AppTab.attendance;
       unawaited(flushPending());
       unawaited(_prefetchVolunteerContent());
+      unawaited(_syncChildDetails());
     });
   }
 
@@ -221,7 +234,10 @@ class AppController extends ChangeNotifier {
     switch (selectedTab) {
       case AppTab.attendance:
       case AppTab.kids:
-        await _runBusy(_loadAttendance);
+        await _runBusy(() async {
+          await _loadAttendance();
+          await _syncChildDetails(force: true, surfaceError: true);
+        });
         return;
       case AppTab.roster:
         await _runBusy(_loadRoster);
@@ -328,6 +344,7 @@ class AppController extends ChangeNotifier {
     try {
       await _loadSessions(restoreSelection: selectedSession != null);
       await flushPending();
+      unawaited(_syncChildDetails());
     } on ApiException catch (error) {
       errorMessage = error.message;
       if (error.isAuthentication) {
@@ -338,17 +355,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<ChildDetails?> loadChildDetails(String childId) async {
-    try {
-      errorMessage = '';
-      return await _api.childDetails(token, childId);
-    } on ApiException catch (error) {
-      errorMessage = error.message;
-      if (error.isAuthentication) {
-        await _clearAuthentication(keepError: true);
-      }
-      notifyListeners();
-      return null;
-    }
+    return childDetailsById[childId];
   }
 
   void clearError() {
@@ -421,6 +428,51 @@ class AppController extends ChangeNotifier {
       AppTab.schedule => _scheduleFreshFor,
       AppTab.resources => _resourcesFreshFor,
     };
+  }
+
+  bool _isChildDetailsStale() {
+    final syncedAt = childDetailsSyncedAt;
+    if (syncedAt == null || childDetailsById.isEmpty) return true;
+    return DateTime.now().toUtc().difference(syncedAt.toUtc()) > _childDetailsFreshFor;
+  }
+
+  Future<bool> _syncChildDetails({bool force = false, bool surfaceError = false}) async {
+    if (!isAuthenticated || syncingChildDetails) return false;
+    if (!force && !_isChildDetailsStale()) return true;
+
+    syncingChildDetails = true;
+    notifyListeners();
+    try {
+      final details = await _api.syncChildDetails(token);
+      final now = DateTime.now().toUtc();
+      childDetailsById = {
+        for (final child in details)
+          if (child.childId.isNotEmpty) child.childId: child,
+      };
+      childDetailsSyncedAt = now;
+      await _storage.saveChildDetails(details, now);
+      return true;
+    } on ApiException catch (error) {
+      if (error.isAuthentication) {
+        errorMessage = error.message;
+        await _clearAuthentication(keepError: true);
+      } else if (surfaceError) {
+        errorMessage = childDetailsById.isEmpty
+            ? 'Child details could not be downloaded. Check the connection and refresh again.'
+            : error.message;
+      }
+      return false;
+    } catch (_) {
+      if (surfaceError) {
+        errorMessage = childDetailsById.isEmpty
+            ? 'Child details could not be downloaded. Check the connection and refresh again.'
+            : 'The saved child details could not be refreshed.';
+      }
+      return false;
+    } finally {
+      syncingChildDetails = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _refreshTabSilently(AppTab tab) async {
@@ -496,6 +548,8 @@ class AppController extends ChangeNotifier {
     sessions = const [];
     selectedSession = null;
     children = const [];
+    childDetailsById = {};
+    childDetailsSyncedAt = null;
     presentByChildId = {};
     selectedTab = AppTab.attendance;
     roster = null;
@@ -505,6 +559,7 @@ class AppController extends ChangeNotifier {
     _loadedAt.clear();
     _refreshingTabs.clear();
     await _storage.saveToken('');
+    await _storage.clearChildDetails();
     if (!keepError) errorMessage = '';
   }
 
