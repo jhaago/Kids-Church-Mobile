@@ -60,9 +60,13 @@ class AppController extends ChangeNotifier {
 
   List<ChildSummary> get visibleChildren {
     final query = searchQuery.trim().toLowerCase();
-    final filtered = query.isEmpty ? [...children] : children.where((child) {
-      return '${child.fullName} ${child.firstName} ${child.surname}'.toLowerCase().contains(query);
-    }).toList();
+    final filtered = query.isEmpty
+        ? [...children]
+        : children.where((child) {
+            return '${child.fullName} ${child.firstName} ${child.surname}'
+                .toLowerCase()
+                .contains(query);
+          }).toList();
     filtered.sort((a, b) {
       final left = childSort == ChildSort.firstName ? a.firstName : a.surname;
       final right = childSort == ChildSort.firstName ? b.firstName : b.surname;
@@ -71,8 +75,9 @@ class AppController extends ChangeNotifier {
     return filtered;
   }
 
-  List<ChildSummary> get presentChildren =>
-      visibleChildren.where((child) => presentByChildId[child.childId] == true).toList(growable: false);
+  List<ChildSummary> get presentChildren => visibleChildren
+      .where((child) => presentByChildId[child.childId] == true)
+      .toList(growable: false);
 
   List<ChildSummary> get attendanceChildren {
     if (searchQuery.trim().isNotEmpty) return visibleChildren;
@@ -80,7 +85,9 @@ class AppController extends ChangeNotifier {
   }
 
   List<ChildSummary> get presentVisitors => visibleChildren
-      .where((child) => !isBeechboroChild(child) && presentByChildId[child.childId] == true)
+      .where((child) =>
+          !isBeechboroChild(child) &&
+          presentByChildId[child.childId] == true)
       .toList(growable: false);
 
   List<ChildSummary> visitorCandidates(String query) {
@@ -92,7 +99,8 @@ class AppController extends ChangeNotifier {
           .toLowerCase()
           .contains(value);
     }).toList();
-    matches.sort((a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()));
+    matches.sort(
+        (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()));
     return matches;
   }
 
@@ -111,7 +119,10 @@ class AppController extends ChangeNotifier {
     final actor = volunteer?.volunteerId ?? '';
     final sessionId = selectedSession?.sessionId ?? '';
     return pendingWrites.any(
-      (item) => item.actorId == actor && item.sessionId == sessionId && item.childId == childId,
+      (item) =>
+          item.actorId == actor &&
+          item.sessionId == sessionId &&
+          item.childId == childId,
     );
   }
 
@@ -168,7 +179,8 @@ class AppController extends ChangeNotifier {
     return _runBusy(() async {
       final result = await _api.login(email, password);
       if (result.token.isEmpty || result.volunteer.volunteerId.isEmpty) {
-        throw const ApiException('INVALID_RESPONSE', 'Login did not return a valid account.');
+        throw const ApiException(
+            'INVALID_RESPONSE', 'Login did not return a valid account.');
       }
       token = result.token;
       volunteer = result.volunteer;
@@ -216,7 +228,8 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  Future<bool> refreshSessions() => _runBusy(() => _loadSessions(restoreSelection: false));
+  Future<bool> refreshSessions() =>
+      _runBusy(() => _loadSessions(restoreSelection: false));
 
   Future<bool> selectSession(ServiceSession session) async {
     return _runBusy(() async {
@@ -281,8 +294,10 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> respondToRoster(RosterItem item, String decision, {String notes = ''}) async {
-    final ok = await _runBusy(() => _api.respondToRoster(token, item.rosterId, decision, notes: notes));
+  Future<void> respondToRoster(RosterItem item, String decision,
+      {String notes = ''}) async {
+    final ok = await _runBusy(
+        () => _api.respondToRoster(token, item.rosterId, decision, notes: notes));
     if (ok) await refreshCurrentTab();
   }
 
@@ -326,18 +341,23 @@ class AppController extends ChangeNotifier {
     try {
       final currentSessions = await _api.listSessions(token);
       sessions = currentSessions;
-      final activeKeys = currentSessions.map((item) => '${item.date}|${item.sessionId}').toSet();
+      final activeKeys = currentSessions
+          .map((item) => '${item.date}|${item.sessionId}')
+          .toSet();
       final actorId = volunteer!.volunteerId;
-      final work = pendingWrites.where((item) => item.actorId == actorId).toList();
+      final work =
+          pendingWrites.where((item) => item.actorId == actorId).toList();
 
       for (final write in work) {
         if (!activeKeys.contains('${write.date}|${write.sessionId}')) {
-          errorMessage = 'A pending change belongs to a closed or unavailable service. Select that service before retrying.';
+          errorMessage =
+              'A pending change belongs to a closed or unavailable service. Select that service before retrying.';
           break;
         }
         try {
           await _api.setAttendance(token, write);
-          pendingWrites = AttendanceQueue.removeRequest(pendingWrites, write.requestId);
+          pendingWrites =
+              AttendanceQueue.removeRequest(pendingWrites, write.requestId);
           await _storage.savePendingWrites(pendingWrites);
           changedServer = true;
           notifyListeners();
@@ -359,7 +379,8 @@ class AppController extends ChangeNotifier {
         await _clearAuthentication(keepError: true);
       }
     } catch (_) {
-      errorMessage = 'Pending attendance is saved on this device and will retry later.';
+      errorMessage =
+          'Pending attendance is saved on this device and will retry later.';
     } finally {
       syncing = false;
       notifyListeners();
@@ -396,7 +417,8 @@ class AppController extends ChangeNotifier {
   Future<void> _loadSessions({bool restoreSelection = false}) async {
     sessions = await _api.listSessions(token);
     if (!restoreSelection) return;
-    final storedId = selectedSession?.sessionId ?? await _storage.selectedSessionId();
+    final storedId =
+        selectedSession?.sessionId ?? await _storage.selectedSessionId();
     ServiceSession? match;
     for (final session in sessions) {
       if (session.sessionId == storedId) {
@@ -415,14 +437,17 @@ class AppController extends ChangeNotifier {
     final session = selectedSession;
     if (session == null) return;
     final result = await _api.bootstrapAttendance(token, session);
-    children = [...result.children]..sort((a, b) => a.fullName.compareTo(b.fullName));
+    children = [...result.children]
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
     presentByChildId = {...result.presentByChildId};
     nightNoteByChildId = {...result.nightNoteByChildId};
     pendingPickupByChildId = {...result.pendingPickupByChildId};
 
     final actorId = volunteer?.volunteerId ?? '';
     for (final write in pendingWrites) {
-      if (write.actorId == actorId && write.sessionId == session.sessionId && write.date == session.date) {
+      if (write.actorId == actorId &&
+          write.sessionId == session.sessionId &&
+          write.date == session.date) {
         presentByChildId[write.childId] = write.present;
       }
     }
@@ -452,21 +477,28 @@ class AppController extends ChangeNotifier {
     final loaded = _loadedAt[tab];
     if (loaded == null) return true;
     final age = DateTime.now().difference(loaded);
-    return age > switch (tab) {
-      AppTab.attendance || AppTab.kids => _attendanceFreshFor,
-      AppTab.roster => _rosterFreshFor,
-      AppTab.schedule => _scheduleFreshFor,
-      AppTab.resources => _resourcesFreshFor,
-    };
+    return age >
+        switch (tab) {
+          AppTab.attendance || AppTab.kids => _attendanceFreshFor,
+          AppTab.roster => _rosterFreshFor,
+          AppTab.schedule => _scheduleFreshFor,
+          AppTab.resources => _resourcesFreshFor,
+        };
   }
 
   bool _isChildDetailsStale() {
     final syncedAt = childDetailsSyncedAt;
-    if (syncedAt == null || childDetailsById.isEmpty || childDetailVersions.isEmpty) return true;
-    return DateTime.now().toUtc().difference(syncedAt.toUtc()) > _childDetailsFreshFor;
+    if (syncedAt == null ||
+        childDetailsById.isEmpty ||
+        childDetailVersions.isEmpty) {
+      return true;
+    }
+    return DateTime.now().toUtc().difference(syncedAt.toUtc()) >
+        _childDetailsFreshFor;
   }
 
-  Future<bool> _syncChildDetails({bool force = false, bool surfaceError = false}) async {
+  Future<bool> _syncChildDetails(
+      {bool force = false, bool surfaceError = false}) async {
     if (!isAuthenticated || syncingChildDetails) return false;
     if (!force && !_isChildDetailsStale()) return true;
 
@@ -493,7 +525,9 @@ class AppController extends ChangeNotifier {
           updatedVersions.remove(childId);
         }
         for (final child in result.changed) {
-          if (child.childId.isEmpty) continue;
+          if (child.childId.isEmpty) {
+            continue;
+          }
           updatedDetails[child.childId] = child;
           final version = result.changedVersions[child.childId] ?? '';
           if (version.isEmpty) {
@@ -549,7 +583,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _refreshTabSilently(AppTab tab) async {
-    if (_refreshingTabs.contains(tab) || !isAuthenticated || selectedSession == null) {
+    if (_refreshingTabs.contains(tab) ||
+        !isAuthenticated ||
+        selectedSession == null) {
       return;
     }
     _refreshingTabs.add(tab);
@@ -639,7 +675,8 @@ class AppController extends ChangeNotifier {
     if (!keepError) errorMessage = '';
   }
 
-  String _newRequestId() => 'attendance-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+  String _newRequestId() =>
+      'attendance-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
   @override
   void dispose() {
