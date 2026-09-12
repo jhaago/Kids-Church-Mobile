@@ -110,6 +110,14 @@ class KidsChurchApi {
     return ChildDetails.fromJson(data);
   }
 
+  Future<List<ChildDetails>> syncChildDetails(String token) async {
+    final data = await _call('children.sync', token: token);
+    return (data['children'] as List<dynamic>? ?? const [])
+        .map((item) => ChildDetails.fromJson(_map(item)))
+        .where((item) => item.childId.isNotEmpty)
+        .toList(growable: false);
+  }
+
   Future<RosterBundle> myRoster(String token) async =>
       RosterBundle.fromJson(await _call('roster.mine', token: token));
 
