@@ -76,12 +76,18 @@ class MobileStorage {
     final stored = await _secure.readAll();
     final details = <String, ChildDetails>{};
     for (final entry in stored.entries) {
-      if (!entry.key.startsWith(_childDetailsPrefix) || entry.value.isEmpty) continue;
+      if (!entry.key.startsWith(_childDetailsPrefix) || entry.value.isEmpty) {
+        continue;
+      }
       try {
         final parsed = jsonDecode(entry.value);
-        if (parsed is! Map) continue;
+        if (parsed is! Map) {
+          continue;
+        }
         final child = ChildDetails.fromJson(Map<String, dynamic>.from(parsed));
-        if (child.childId.isNotEmpty) details[child.childId] = child;
+        if (child.childId.isNotEmpty) {
+          details[child.childId] = child;
+        }
       } catch (_) {
         // Ignore a corrupt record; a later sync will replace it.
       }
@@ -99,7 +105,9 @@ class MobileStorage {
     final wantedKeys = <String>{};
 
     for (final child in children) {
-      if (child.childId.isEmpty) continue;
+      if (child.childId.isEmpty) {
+        continue;
+      }
       final key = '$_childDetailsPrefix${child.childId}';
       wantedKeys.add(key);
       await _secure.write(key: key, value: jsonEncode(_childDetailsToJson(child)));
