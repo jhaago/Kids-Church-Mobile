@@ -6,12 +6,10 @@ import 'package:http/testing.dart';
 import 'package:kids_church_mobile/api/kids_church_api.dart';
 
 void main() {
-  test('bulk child detail sync uses one authenticated children.sync request', () async {
-    var requestCount = 0;
+  test('child detail delta sync sends versions and parses changes', () async {
     late Map<String, dynamic> requestBody;
     final api = KidsChurchApi(
       client: MockClient((request) async {
-        requestCount++;
         requestBody = jsonDecode(request.body) as Map<String, dynamic>;
         return http.Response(
           jsonEncode({
@@ -19,18 +17,21 @@ void main() {
             'version': 'v1',
             'requestId': requestBody['requestId'],
             'data': {
-              'children': [
+              'changed': [
                 {
                   'childId': 'KID-1',
-                  'fullName': 'Alex Example',
+                  'fullName': 'Example Record',
                   'age': 8,
-                  'medicalInfo': 'Asthma',
-                  'otherInfo': 'Important note',
-                  'parentA': {'name': 'Parent One', 'phone': '0400000000'},
+                  'medicalInfo': '',
+                  'otherInfo': '',
+                  'parentA': {'name': '', 'phone': ''},
                   'parentB': {'name': '', 'phone': ''},
                   'additionalGuardians': <Object>[],
+                  'version': 'version-new',
                 },
               ],
+              'removed': ['KID-2'],
+              'syncedAt': '2026-09-12T03:30:00.000Z',
             },
           }),
           200,
@@ -38,15 +39,17 @@ void main() {
       }),
     )..configure('https://example.test/exec');
 
-    final children = await api.syncChildDetails('secure-token');
+    final result = await api.syncChildDetails(
+      'secure-token',
+      {'KID-1': 'version-old', 'KID-2': 'version-existing'},
+    );
 
-    expect(requestCount, 1);
     expect(requestBody['operation'], 'children.sync');
-    expect(requestBody['token'], 'secure-token');
-    expect(children, hasLength(1));
-    expect(children.single.childId, 'KID-1');
-    expect(children.single.medicalInfo, 'Asthma');
-    expect(children.single.parentA.name, 'Parent One');
+    expect(requestBody['data']['knownVersions']['KID-1'], 'version-old');
+    expect(result.fullSnapshot, false);
+    expect(result.changed.single.childId, 'KID-1');
+    expect(result.changedVersions['KID-1'], 'version-new');
+    expect(result.removed, ['KID-2']);
     api.close();
   });
 }
