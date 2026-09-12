@@ -401,6 +401,17 @@ class _ChildrenPage extends StatelessWidget {
             _Badge('Present: ${controller.presentCount}'),
             if (controller.pendingCount > 0) ...[const SizedBox(width: 6), _Badge('Sync: ${controller.pendingCount}')],
           ]),
+          if (!presentOnly) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _showAddVisitor(context, controller),
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: const Text('Add visitor'),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             onChanged: controller.setSearchQuery,
@@ -769,6 +780,112 @@ BoxDecoration _panelDecoration() => BoxDecoration(
       border: Border.all(color: KidsChurchColors.border),
       borderRadius: BorderRadius.circular(18),
     );
+
+Future<void> _showAddVisitor(BuildContext context, AppController controller) async {
+  final query = TextEditingController();
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setModalState) {
+        final results = controller.visitorCandidates(query.text);
+        return FractionallySizedBox(
+          heightFactor: 0.85,
+          child: SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                0,
+                20,
+                20 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Add visitor',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Search for an existing visitor first. Only children outside Beechboro are shown here.',
+                    style: TextStyle(color: KidsChurchColors.muted),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: query,
+                    autofocus: true,
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: const InputDecoration(
+                      hintText: 'Search existing visitors...',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: controller.registerUrl.isEmpty ? null : () => _openUrl(controller.registerUrl),
+                    icon: const Icon(Icons.person_add_outlined),
+                    label: const Text('Register new child'),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: query.text.trim().isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Start typing a name to find an existing visitor.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: KidsChurchColors.muted),
+                            ),
+                          )
+                        : results.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'No existing visitors match that search.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: KidsChurchColors.muted),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: results.length,
+                                separatorBuilder: (_, __) => const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final child = results[index];
+                                  final present = controller.presentByChildId[child.childId] == true;
+                                  return ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: _ChildAvatar(child: child),
+                                    title: Text(child.fullName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    subtitle: Text(child.church.trim().isEmpty ? 'Visitor' : child.church.trim()),
+                                    trailing: present
+                                        ? const Icon(Icons.check_circle_outline)
+                                        : FilledButton(
+                                            onPressed: () {
+                                              controller.toggleAttendance(child, true);
+                                              Navigator.pop(context);
+                                            },
+                                            child: const Text('Add'),
+                                          ),
+                                    onTap: present
+                                        ? null
+                                        : () {
+                                            controller.toggleAttendance(child, true);
+                                            Navigator.pop(context);
+                                          },
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+  query.dispose();
+}
 
 void _showChildDetails(BuildContext context, AppController controller, ChildSummary child) {
   showModalBottomSheet<void>(
