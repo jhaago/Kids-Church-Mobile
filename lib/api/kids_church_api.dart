@@ -30,6 +30,22 @@ class LoginResult {
   final Volunteer volunteer;
 }
 
+class ChildDetailsSyncResult {
+  const ChildDetailsSyncResult({
+    required this.changed,
+    required this.changedVersions,
+    required this.removed,
+    required this.syncedAt,
+    required this.fullSnapshot,
+  });
+
+  final List<ChildDetails> changed;
+  final Map<String, String> changedVersions;
+  final List<String> removed;
+  final DateTime? syncedAt;
+  final bool fullSnapshot;
+}
+
 class KidsChurchApi {
   KidsChurchApi({http.Client? client}) : _client = client ?? http.Client();
 
@@ -108,6 +124,43 @@ class KidsChurchApi {
   Future<ChildDetails> childDetails(String token, String childId) async {
     final data = await _call('children.get', token: token, data: {'childId': childId});
     return ChildDetails.fromJson(data);
+  }
+
+  Future<ChildDetailsSyncResult> syncChildDetails(
+    String token,
+    Map<String, String> knownVersions,
+  ) async {
+    final data = await _call(
+      'children.sync',
+      token: token,
+      data: {'knownVersions': knownVersions},
+    );
+
+    final deltaItems = data['changed'] as List<dynamic>?;
+    final legacyItems = data['children'] as List<dynamic>?;
+    final rawItems = deltaItems ?? legacyItems ?? const [];
+    final changed = <ChildDetails>[];
+    final changedVersions = <String, String>{};
+
+    for (final item in rawItems) {
+      final json = _map(item);
+      final child = ChildDetails.fromJson(json);
+      if (child.childId.isEmpty) continue;
+      changed.add(child);
+      final version = json['version']?.toString() ?? '';
+      if (version.isNotEmpty) changedVersions[child.childId] = version;
+    }
+
+    return ChildDetailsSyncResult(
+      changed: changed,
+      changedVersions: changedVersions,
+      removed: (data['removed'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false),
+      syncedAt: DateTime.tryParse(data['syncedAt']?.toString() ?? ''),
+      fullSnapshot: deltaItems == null && legacyItems != null,
+    );
   }
 
   Future<RosterBundle> myRoster(String token) async =>
