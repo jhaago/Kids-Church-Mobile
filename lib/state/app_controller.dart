@@ -101,16 +101,21 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       pendingWrites = await _storage.pendingWrites();
-      childDetailsById = await _storage.childDetails();
-      childDetailsSyncedAt = await _storage.childDetailsSyncedAt();
       final storedUrl = await _storage.apiUrl();
       if (storedUrl.isEmpty) return;
       _api.configure(storedUrl);
       apiUrl = storedUrl;
 
       token = await _storage.token();
-      if (token.isEmpty) return;
+      if (token.isEmpty) {
+        childDetailsById = {};
+        childDetailsSyncedAt = null;
+        await _storage.clearChildDetails();
+        return;
+      }
       volunteer = await _api.me(token);
+      childDetailsById = await _storage.childDetails();
+      childDetailsSyncedAt = await _storage.childDetailsSyncedAt();
       await _loadSessions(restoreSelection: true);
       if (childDetailsById.isEmpty) {
         await _syncChildDetails(force: true, surfaceError: true);
@@ -148,6 +153,9 @@ class AppController extends ChangeNotifier {
       token = result.token;
       volunteer = result.volunteer;
       await _storage.saveToken(token);
+      childDetailsById = {};
+      childDetailsSyncedAt = null;
+      await _storage.clearChildDetails();
       selectedSession = null;
       children = const [];
       presentByChildId = {};
